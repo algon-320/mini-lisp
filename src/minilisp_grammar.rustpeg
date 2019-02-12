@@ -1,0 +1,41 @@
+use Program;
+use List;
+use Elem;
+use Atom;
+
+with_whitespace<E> = whitespace* E whitespace*
+whitespace = " " / "\n" / "\t" { () }
+
+pub program -> Program
+  = list
+
+list -> List
+  = "(" vec:(elem)* ")" { List{ data: vec } }
+
+elem -> Elem
+  = whitespace* x:list whitespace* { Elem::ListElement(x) }
+  / whitespace* x:atom whitespace* { Elem::AtomElement(x) }
+
+atom -> Atom
+  = symbol / boolean / number / string
+
+
+boolean -> Atom
+  = val:$("TRUE" / "FALSE" / "true" / "false")
+  {
+    let b = val.to_uppercase();
+    match b.as_str() {
+      "TRUE" => Atom::Bool(true),
+      "FALSE" => Atom::Bool(false),
+      _ => panic!("hoge")
+    }
+  }
+
+symbol -> Atom
+  = !boolean sym:$([a-zA-Z_]+) { Atom::Symbol(sym.to_string()) }
+
+number -> Atom
+  = n:$([0-9]+) { Atom::Int(n.parse().unwrap()) }
+
+string -> Atom
+  = "\"" s:$([^\"]*) "\"" { Atom::StringData(s.to_string()) }

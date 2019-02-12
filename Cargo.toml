@@ -2,5 +2,9 @@
 name = "mini-lisp"
 version = "0.1.0"
 authors = ["algon-320 <algon.0320@gmail.com>"]
+build = "build.rs"
+
+[build-dependencies]
+peg = { version = "0.5" }
 
 [dependencies]
