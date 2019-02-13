@@ -3,21 +3,21 @@ use std::fmt;
 
 pub type Program = List;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub enum Elem {
     ListElement(List),
     AtomElement(Atom),
 }
-impl fmt::Display for Elem {
+impl fmt::Debug for Elem {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Elem::ListElement(l) => write!(f, "{}", l),
-            Elem::AtomElement(a) => write!(f, "{}", a),
+            Elem::ListElement(l) => write!(f, "{:?}", l),
+            Elem::AtomElement(a) => write!(f, "{:?}", a),
         }
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct List {
     data: Vec<Elem>,
 }
@@ -28,11 +28,11 @@ impl List {
     }
 }
 
-impl fmt::Display for List {
+impl fmt::Debug for List {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "(");
         for (i, e) in self.data.iter().enumerate() {
-            write!(f, "{}", e);
+            write!(f, "{:?}", e);
             if i != self.data.len() - 1 {
                 write!(f, " ");
             }
@@ -41,7 +41,7 @@ impl fmt::Display for List {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub enum Atom {
     Symbol(String),
     Int(i64),
@@ -49,7 +49,7 @@ pub enum Atom {
     StringData(String),
 }
 
-impl fmt::Display for Atom {
+impl fmt::Debug for Atom {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Atom::Symbol(s) => write!(f, "sym:{}", s),
@@ -98,7 +98,7 @@ fn op_add(list: &List, env: &mut Env) -> Result<Elem, String> {
         if let Some(n) = extract_int(&e) {
             ret += n;
         } else {
-            return Err("mismatched types.".to_string());
+            return Err(format!("mismatched types."));
         }
     }
     Ok(Elem::AtomElement(Atom::Int(ret)))
@@ -116,7 +116,7 @@ fn op_sub(list: &List, env: &mut Env) -> Result<Elem, String> {
                 ret -= n;
             }
         } else {
-            return Err("mismatched types.".to_string());
+            return Err(format!("mismatched types."));
         }
     }
     Ok(Elem::AtomElement(Atom::Int(ret)))
@@ -130,7 +130,7 @@ fn op_mul(list: &List, env: &mut Env) -> Result<Elem, String> {
         if let Some(n) = extract_int(&e) {
             ret *= n;
         } else {
-            return Err("mismatched types.".to_string());
+            return Err(format!("mismatched types."));
         }
     }
     Ok(Elem::AtomElement(Atom::Int(ret)))
@@ -148,7 +148,7 @@ fn op_div(list: &List, env: &mut Env) -> Result<Elem, String> {
                 ret /= n;
             }
         } else {
-            return Err("mismatched types.".to_string());
+            return Err(format!("mismatched types."));
         }
     }
     Ok(Elem::AtomElement(Atom::Int(ret)))
@@ -156,23 +156,23 @@ fn op_div(list: &List, env: &mut Env) -> Result<Elem, String> {
 
 fn op_setq(list: &List, env: &mut Env) -> Result<Elem, String> {
     if let Some(e) = check_arg_num(list, 2) {
-        return Err(format!("{}{}", "setq: ".to_string(), e));
+        return Err(format!("setq: {}", e));
     }
     let e1 = eval(&list.data[0], env)?;
     let e2 = eval(&list.data[1], env)?;
     match e1 {
         Elem::AtomElement(atom) => match atom {
             Atom::Symbol(sym) => env.vars.insert(sym.clone(), e2.clone()),
-            _ => return Err("cannot assign to non-simbol element.".to_string()),
+            _ => return Err(format!("cannot assign to non-simbol element.")),
         },
-        _ => return Err("cannot assign to non-simbol element.".to_string()),
+        _ => return Err(format!("cannot assign to non-simbol element.")),
     };
     Ok(Elem::ListElement(List::unit()))
 }
 
 fn op_progn(list: &List, env: &mut Env) -> Result<Elem, String> {
     let mut res = Elem::ListElement(List::unit());
-    for (i, e) in list.data.iter().enumerate() {
+    for e in &list.data {
         res = eval(e, env)?;
     }
     Ok(res)
@@ -181,14 +181,14 @@ fn op_progn(list: &List, env: &mut Env) -> Result<Elem, String> {
 // fn op_defun(list: &List, env: &mut Env) -> Result<Elem, String> {}
 fn check_arg_num(list: &List, n: usize) -> Option<String> {
     if list.data.len() != n {
-        return Some("mismatch number of operands.".to_string());
+        return Some(format!("mismatch number of operands."));
     }
     None
 }
 
 fn op_eq(list: &List, env: &mut Env) -> Result<Elem, String> {
     if let Some(e) = check_arg_num(list, 2) {
-        return Err(format!("{}{}", "eq: ".to_string(), e));
+        return Err(format!("eq: {}", e));
     }
     let e1 = eval(&list.data[0], env)?;
     let e2 = eval(&list.data[1], env)?;
@@ -199,15 +199,15 @@ fn op_eq(list: &List, env: &mut Env) -> Result<Elem, String> {
             (Atom::Int(v1), Atom::Int(v2)) => v1 == v2,
             (Atom::Bool(v1), Atom::Bool(v2)) => v1 == v2,
             (Atom::StringData(v1), Atom::StringData(v2)) => v1 == v2,
-            _ => return Err("eq: mismatch types.".to_string()),
+            _ => return Err(format!("eq: mismatch types.")),
         },
-        _ => return Err("eq: mismatch types.".to_string()),
+        _ => return Err(format!("eq: mismatch types.")),
     };
     Ok(Elem::AtomElement(Atom::Bool(ret)))
 }
 fn op_neq(list: &List, env: &mut Env) -> Result<Elem, String> {
     if let Some(e) = check_arg_num(list, 2) {
-        return Err(format!("{}{}", "neq: ".to_string(), e));
+        return Err(format!("neq: {}", e));
     }
     if let Elem::AtomElement(Atom::Bool(f)) = op_eq(list, env)? {
         return Ok(Elem::AtomElement(Atom::Bool(!f)));
@@ -217,19 +217,19 @@ fn op_neq(list: &List, env: &mut Env) -> Result<Elem, String> {
 }
 fn op_not(list: &List, env: &mut Env) -> Result<Elem, String> {
     if let Some(e) = check_arg_num(list, 1) {
-        return Err(format!("{}{}", "not: ".to_string(), e));
+        return Err(format!("not: {}", e));
     }
     let e = eval(&list.data[0], env)?;
     if let Elem::AtomElement(Atom::Bool(f)) = e {
         return Ok(Elem::AtomElement(Atom::Bool(!f)));
     } else {
-        return Err("not: mismatch type.".to_string());
+        return Err(format!("not: mismatch type."));
     }
 }
 
 fn op_if(list: &List, env: &mut Env) -> Result<Elem, String> {
     if let Some(e) = check_arg_num(list, 3) {
-        return Err(format!("{}{}", "if: ".to_string(), e));
+        return Err(format!("if: {}", e));
     }
     let e1 = eval(&list.data[0], env)?;
     if let Elem::AtomElement(Atom::Bool(f)) = e1 {
@@ -239,20 +239,20 @@ fn op_if(list: &List, env: &mut Env) -> Result<Elem, String> {
             return eval(&list.data[2], env);
         }
     } else {
-        return Err("if: mismatch type.".to_string());
+        return Err(format!("if: mismatch type."));
     }
 }
 
 fn op_print(list: &List, env: &mut Env) -> Result<Elem, String> {
     if let Some(e) = check_arg_num(list, 1) {
-        return Err(format!("{}{}", "print: ", e));
+        return Err(format!("print: {}", e));
     }
     let e = eval(&list.data[0], env)?;
     match e {
         Elem::ListElement(l) => {
             print!("(");
             for (i, e) in l.data.iter().enumerate() {
-                print!("{}", e);
+                print!("{:?}", e);
                 if i != l.data.len() - 1 {
                     print!(" ");
                 }
@@ -260,7 +260,7 @@ fn op_print(list: &List, env: &mut Env) -> Result<Elem, String> {
             print!(")")
         }
         Elem::AtomElement(a) => match a {
-            Atom::Symbol(sym) => return Err("undefined symbol.".to_string()),
+            Atom::Symbol(_) => return Err(format!("undefined symbol.")),
             Atom::Int(n) => print!("{}", n),
             Atom::Bool(f) => print!("{:?}", f),
             Atom::StringData(s) => print!("{}", s),
@@ -270,17 +270,21 @@ fn op_print(list: &List, env: &mut Env) -> Result<Elem, String> {
 }
 fn op_println(list: &List, env: &mut Env) -> Result<Elem, String> {
     if let Some(e) = check_arg_num(list, 1) {
-        return Err(format!("{}{}", "print: ", e));
+        return Err(format!("print: {}", e));
     }
     op_print(list, env)?;
     println!();
     Ok(Elem::ListElement(List::unit()))
 }
 
+fn op_defun(list: &List, env: &mut Env) -> Result<Elem, String> {
+    Err(format!("unimplemented"))
+}
+
 fn check_builtin_operator(name: &str) -> Option<fn(&List, &mut Env) -> Result<Elem, String>> {
     let upper = name.to_lowercase();
     match upper.as_str() {
-        "defun" => None,
+        "defun" => Some(op_defun),
         "progn" => Some(op_progn),
         "setq" => Some(op_setq),
         "if" => Some(op_if),
@@ -345,7 +349,7 @@ fn main() {
 
     match minilisp_grammar::program(code) {
         Ok(r) => match eval(&Elem::ListElement(r), &mut Env::new()) {
-            Ok(elem) => println!("> {}", elem),
+            Ok(elem) => println!("> {:?}", elem),
             Err(message) => {
                 println!("evaluation error: {}", message);
             }
