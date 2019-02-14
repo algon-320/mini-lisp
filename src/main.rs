@@ -385,8 +385,20 @@ fn eval(elem: &Elem, env: &mut Env) -> Result<Elem, String> {
             if let Some(e) = env.vars.get(sym) {
                 return Ok(e.as_ref().clone());
             }
-            println!("eval: undefined symbol: {}", sym);
-            Ok(Elem::Symbol(sym.clone()))
+            // 親スコープを探索
+            let mut cur = env.parent.clone();
+            loop {
+                if let Some(e) = cur.upgrade() {
+                    if let Some(elem) = e.vars.get(sym) {
+                        return Ok(elem.as_ref().clone());
+                    } else {
+                        cur = e.parent.clone();
+                    }
+                } else {
+                    break;
+                }
+            }
+            Err(format!("eval: undefined symbol: {}", sym))
         }
         _ => Ok(elem.clone()),
     }
