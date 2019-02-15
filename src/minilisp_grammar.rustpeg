@@ -5,7 +5,7 @@ use Elem;
 whitespace = " " / "\n" / "\t" { () }
 comment
  = "//" [^\n]* [\n]?
- / "/*" [^"*/"]* "*/"
+ / "/*" [^"*/"]* comment? [^"*/"]* "*/"
 ignored = whitespace / comment
 
 pub program -> Program
