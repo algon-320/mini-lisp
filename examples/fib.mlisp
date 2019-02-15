@@ -1,6 +1,9 @@
 (progn
+    // calculate fibonacci number {f_n}
     (defun fib (n)
         (if (eq n 0)
+            /* if n == 0 then
+                    return 0 */
             0
             (if (eq n 1)
                 1
@@ -8,5 +11,5 @@
             )
         )
     )
-    (println (fib 20))
+    (println (fib 20))  // 6765
 )

@@ -2,18 +2,21 @@ use Program;
 use List;
 use Elem;
 
-with_whitespace<E> = whitespace* E whitespace*
 whitespace = " " / "\n" / "\t" { () }
+comment
+ = "//" [^\n]* [\n]?
+ / "/*" [^"*/"]* "*/"
+ignored = whitespace / comment
 
 pub program -> Program
-  = list
+  = ignored* x:list ignored* { x }
 
 list -> List
   = "(" vec:(elem)* ")" { List{ data: vec } }
 
 elem -> Elem
-  = whitespace* x:list whitespace* { Elem::List(x) }
-  / whitespace* x:atom whitespace* { x }
+  = ignored* x:list ignored* { Elem::List(x) }
+  / ignored* x:atom ignored* { x }
 
 atom -> Elem
   = symbol / boolean / number / string
