@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
 use std::rc::Rc;
@@ -12,7 +13,8 @@ pub enum Elem {
     Int(i64),
     Bool(bool),
     StringData(String),
-    Func(List, List, Env),
+    Func(List, List, Rc<RefCell<Env>>),
+    BuiltinFunc(String),
 }
 impl fmt::Debug for Elem {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -27,6 +29,7 @@ impl fmt::Debug for Elem {
             },
             Elem::StringData(s) => write!(f, "str:{}", s),
             Elem::Func(_, _, _) => write!(f, "func: {}", "(details of func)"),
+            Elem::BuiltinFunc(name) => write!(f, "builin func: {}", name),
         }
     }
 }
@@ -40,6 +43,7 @@ impl Elem {
             Elem::Bool(_) => "Bool",
             Elem::StringData(_) => "String",
             Elem::Func(_, _, _) => "Func",
+            Elem::BuiltinFunc(_) => "BuiltinFunc",
             _ => "(undefined)",
         }
     }
@@ -88,7 +92,7 @@ impl Elem {
             )),
         }
     }
-    fn extract_func(&self) -> Result<(List, List, Env), String> {
+    fn extract_func(&self) -> Result<(List, List, Rc<RefCell<Env>>), String> {
         match self {
             Elem::Func(a, b, c) => Ok((a.clone(), b.clone(), c.clone())),
             _ => Err(format!(
@@ -129,8 +133,8 @@ mod minilisp_grammar {
 
 #[derive(Clone)]
 pub struct Env {
-    parent: Weak<Env>,
-    vars: HashMap<String, Rc<Elem>>,
+    parent: Weak<RefCell<Env>>,
+    vars: Rc<RefCell<HashMap<String, Elem>>>,
 }
 
 impl PartialEq for Env {
@@ -143,7 +147,7 @@ impl Env {
     fn new() -> Env {
         Env {
             parent: Weak::new(),
-            vars: HashMap::new(),
+            vars: Rc::new(RefCell::new(HashMap::new())),
         }
     }
 }
@@ -156,7 +160,7 @@ fn check_arg_num(args: &[Elem], n: usize) -> Option<String> {
 }
 
 // args の要素をすべて足す (IntでないElemがあるとエラー)
-fn op_add(args: &[Elem], env: &mut Env) -> Result<Elem, String> {
+fn op_add(args: &[Elem], env: &Rc<RefCell<Env>>) -> Result<Elem, String> {
     let mut ret = 0;
     for e in args {
         let e = eval(e, env)?;
@@ -167,7 +171,7 @@ fn op_add(args: &[Elem], env: &mut Env) -> Result<Elem, String> {
 }
 
 // args の最初の要素から他をすべて引く (IntでないElemがあるとエラー)
-fn op_sub(args: &[Elem], env: &mut Env) -> Result<Elem, String> {
+fn op_sub(args: &[Elem], env: &Rc<RefCell<Env>>) -> Result<Elem, String> {
     let mut ret = 0;
     for (i, e) in args.iter().enumerate() {
         let e = eval(e, env)?;
@@ -182,7 +186,7 @@ fn op_sub(args: &[Elem], env: &mut Env) -> Result<Elem, String> {
 }
 
 // args の要素をすべて掛ける (IntでないElemがあるとエラー)
-fn op_mul(args: &[Elem], env: &mut Env) -> Result<Elem, String> {
+fn op_mul(args: &[Elem], env: &Rc<RefCell<Env>>) -> Result<Elem, String> {
     let mut ret = 1;
     for e in args {
         let e = eval(e, env)?;
@@ -193,7 +197,7 @@ fn op_mul(args: &[Elem], env: &mut Env) -> Result<Elem, String> {
 }
 
 // args の最初の要素から他をすべて割る (IntでないElemがあるとエラー)
-fn op_div(args: &[Elem], env: &mut Env) -> Result<Elem, String> {
+fn op_div(args: &[Elem], env: &Rc<RefCell<Env>>) -> Result<Elem, String> {
     let mut ret = 0;
     for (i, e) in args.iter().enumerate() {
         let e = eval(e, env)?;
@@ -207,18 +211,19 @@ fn op_div(args: &[Elem], env: &mut Env) -> Result<Elem, String> {
     Ok(Elem::Int(ret))
 }
 
-fn op_setq(args: &[Elem], env: &mut Env) -> Result<Elem, String> {
+fn op_setq(args: &[Elem], env: &Rc<RefCell<Env>>) -> Result<Elem, String> {
     if let Some(e) = check_arg_num(args, 2) {
         return Err(format!("setq: {}", e));
     }
-    let e1 = eval(&args[0], env)?;
+    let e1 = &args[0];
     let e2 = eval(&args[1], env)?;
     let sym = e1.extract_symbol()?;
-    env.vars.insert(sym, Rc::new(e2.clone()));
+    let env = (*env).borrow_mut();
+    env.vars.borrow_mut().insert(sym, e2.clone());
     Ok(Elem::List(List::unit()))
 }
 
-fn op_progn(args: &[Elem], env: &mut Env) -> Result<Elem, String> {
+fn op_progn(args: &[Elem], env: &Rc<RefCell<Env>>) -> Result<Elem, String> {
     let mut res = Elem::List(List::unit());
     for e in args {
         res = eval(e, env)?;
@@ -226,7 +231,7 @@ fn op_progn(args: &[Elem], env: &mut Env) -> Result<Elem, String> {
     Ok(res)
 }
 
-fn op_eq(args: &[Elem], env: &mut Env) -> Result<Elem, String> {
+fn op_eq(args: &[Elem], env: &Rc<RefCell<Env>>) -> Result<Elem, String> {
     if let Some(e) = check_arg_num(args, 2) {
         return Err(format!("eq: {}", e));
     }
@@ -242,7 +247,7 @@ fn op_eq(args: &[Elem], env: &mut Env) -> Result<Elem, String> {
     };
     Ok(Elem::Bool(ret))
 }
-fn op_neq(args: &[Elem], env: &mut Env) -> Result<Elem, String> {
+fn op_neq(args: &[Elem], env: &Rc<RefCell<Env>>) -> Result<Elem, String> {
     if let Some(e) = check_arg_num(args, 2) {
         return Err(format!("neq: {}", e));
     }
@@ -252,7 +257,7 @@ fn op_neq(args: &[Elem], env: &mut Env) -> Result<Elem, String> {
         panic!("fatal processing error: op_not")
     }
 }
-fn op_not(args: &[Elem], env: &mut Env) -> Result<Elem, String> {
+fn op_not(args: &[Elem], env: &Rc<RefCell<Env>>) -> Result<Elem, String> {
     if let Some(e) = check_arg_num(args, 1) {
         return Err(format!("not: {}", e));
     }
@@ -264,7 +269,7 @@ fn op_not(args: &[Elem], env: &mut Env) -> Result<Elem, String> {
     }
 }
 
-fn op_if(args: &[Elem], env: &mut Env) -> Result<Elem, String> {
+fn op_if(args: &[Elem], env: &Rc<RefCell<Env>>) -> Result<Elem, String> {
     if let Some(e) = check_arg_num(args, 3) {
         return Err(format!("if: {}", e));
     }
@@ -277,7 +282,7 @@ fn op_if(args: &[Elem], env: &mut Env) -> Result<Elem, String> {
     }
 }
 
-fn op_print(args: &[Elem], env: &mut Env) -> Result<Elem, String> {
+fn op_print(args: &[Elem], env: &Rc<RefCell<Env>>) -> Result<Elem, String> {
     if let Some(e) = check_arg_num(args, 1) {
         return Err(format!("print: {}", e));
     }
@@ -301,7 +306,7 @@ fn op_print(args: &[Elem], env: &mut Env) -> Result<Elem, String> {
     }
     Ok(Elem::List(List::unit()))
 }
-fn op_println(args: &[Elem], env: &mut Env) -> Result<Elem, String> {
+fn op_println(args: &[Elem], env: &Rc<RefCell<Env>>) -> Result<Elem, String> {
     if let Some(e) = check_arg_num(args, 1) {
         return Err(format!("print: {}", e));
     }
@@ -310,20 +315,20 @@ fn op_println(args: &[Elem], env: &mut Env) -> Result<Elem, String> {
     Ok(Elem::List(List::unit()))
 }
 
-fn op_lambda(args: &[Elem], env: &mut Env) -> Result<Elem, String> {
+fn op_lambda(args: &[Elem], env: &Rc<RefCell<Env>>) -> Result<Elem, String> {
     if let Some(e) = check_arg_num(args, 2) {
         return Err(format!("lambda: {}", e));
     }
     let closure = Env {
-        parent: Weak::new(), // TODO: envへのポインタを格納する
-        vars: HashMap::new(),
+        parent: Rc::downgrade(&env),
+        vars: Rc::new(RefCell::new(HashMap::new())),
     };
     let lambda_arg = args[0].extract_list()?;
     let ops = args[1].extract_list()?;
-    Ok(Elem::Func(lambda_arg, ops, closure))
+    Ok(Elem::Func(lambda_arg, ops, Rc::new(RefCell::new(closure))))
 }
 
-fn op_defun(args: &[Elem], env: &mut Env) -> Result<Elem, String> {
+fn op_defun(args: &[Elem], env: &Rc<RefCell<Env>>) -> Result<Elem, String> {
     if let Some(e) = check_arg_num(args, 3) {
         return Err(format!("defun: {}", e));
     }
@@ -332,33 +337,49 @@ fn op_defun(args: &[Elem], env: &mut Env) -> Result<Elem, String> {
         _ => return Err(format!("defun: mismatch operand type.")),
     };
     let func = op_lambda(&args[1..], env)?;
-    env.vars.insert(sym.clone(), Rc::new(func));
-    unimplemented!()
-    // Ok(Elem::ListElement(List::unit()))
+    let env = env.borrow_mut();
+    env.vars.borrow_mut().insert(sym.clone(), func.clone());
+    Ok(Elem::List(List::unit()))
 }
 
-fn check_builtin_operator(name: &str) -> Option<fn(&[Elem], &mut Env) -> Result<Elem, String>> {
-    let upper = name.to_lowercase();
-    match upper.as_str() {
-        "defun" => Some(op_defun),
-        "lambda" => Some(op_lambda),
-        "progn" => Some(op_progn),
-        "setq" => Some(op_setq),
-        "if" => Some(op_if),
-        "eq" => Some(op_eq),
-        "neq" => Some(op_neq),
-        "not" => Some(op_not),
-        "add" => Some(op_add),
-        "sub" => Some(op_sub),
-        "mul" => Some(op_mul),
-        "div" => Some(op_div),
-        "print" => Some(op_print),
-        "println" => Some(op_println),
-        _ => None,
+fn set_builtin_operator(env: &Rc<RefCell<Env>>) {
+    let op_names = [
+        "defun", "lambda", "progn", "setq", "if", "eq", "neq", "not", "land", "lor", "add", "sub",
+        "mul", "div", "bit_and", "bit_or", "bit_xor", "print", "println",
+    ];
+    let env = env.borrow_mut();
+    for name in op_names.iter() {
+        env.vars
+            .borrow_mut()
+            .insert(name.to_string(), Elem::BuiltinFunc(name.to_string()));
     }
 }
 
-fn eval(elem: &Elem, env: &mut Env) -> Result<Elem, String> {
+fn call_builtin_operator(
+    name: String,
+    args: &[Elem],
+    env: &Rc<RefCell<Env>>,
+) -> Result<Elem, String> {
+    match name.as_str() {
+        "defun" => op_defun(args, env),
+        "lambda" => op_lambda(args, env),
+        "progn" => op_progn(args, env),
+        "setq" => op_setq(args, env),
+        "if" => op_if(args, env),
+        "eq" => op_eq(args, env),
+        "neq" => op_neq(args, env),
+        "not" => op_not(args, env),
+        "add" => op_add(args, env),
+        "sub" => op_sub(args, env),
+        "mul" => op_mul(args, env),
+        "div" => op_div(args, env),
+        "print" => op_print(args, env),
+        "println" => op_println(args, env),
+        _ => Err(format!("call_builtin_operator: undefined")),
+    }
+}
+
+fn eval(elem: &Elem, env: &Rc<RefCell<Env>>) -> Result<Elem, String> {
     match elem {
         Elem::List(list) => {
             if list.data.is_empty() {
@@ -367,33 +388,59 @@ fn eval(elem: &Elem, env: &mut Env) -> Result<Elem, String> {
 
             let h = eval(&list.data[0], env)?;
             let ret = match h {
-                Elem::Symbol(sym) => {
-                    if let Some(f) = check_builtin_operator(&sym) {
-                        match f(&list.data[1..], env) {
-                            Ok(e) => e,
-                            Err(msg) => return Err(msg),
-                        }
-                    } else {
-                        Elem::List(list.clone())
+                Elem::BuiltinFunc(name) => call_builtin_operator(name, &list.data[1..], env)?,
+                Elem::Func(args, ops, def_env) => {
+                    if list.data[1..].len() != args.data.len() {
+                        return Err(format!("func: mismatch number of arguments."));
                     }
+
+                    // 引数の評価
+                    let mut evalated = List { data: Vec::new() };
+                    for (i, e) in list.data[1..].iter().enumerate() {
+                        evalated.data.push(eval(&e, &env)?);
+                    }
+
+                    let call_env = Env {
+                        parent: Rc::downgrade(&def_env),
+                        vars: Rc::new(RefCell::new(HashMap::new())),
+                    };
+
+                    // 引数を環境に登録
+                    {
+                        // let env = env.borrow_mut();
+                        for (i, e) in args.data.iter().enumerate() {
+                            match e {
+                                Elem::Symbol(name) => {
+                                    call_env
+                                        .vars
+                                        .borrow_mut()
+                                        .insert(name.clone(), evalated.data[i].clone());
+                                }
+                                _ => return Err(format!("func: mismatch type of arguments")),
+                            };
+                        }
+                    }
+                    // 呼び出し
+                    eval(&Elem::List(ops), &Rc::new(RefCell::new(call_env)))?
                 }
                 _ => Elem::List(list.clone()),
             };
             Ok(ret)
         }
         Elem::Symbol(sym) => {
-            if let Some(e) = env.vars.get(sym) {
-                return Ok(e.as_ref().clone());
+            let env = env.borrow();
+            if let Some(e) = env.vars.borrow().get(sym) {
+                return Ok(e.clone());
             }
             // 親スコープを探索
             let mut cur = env.parent.clone();
             loop {
                 if let Some(e) = cur.upgrade() {
-                    if let Some(elem) = e.vars.get(sym) {
-                        return Ok(elem.as_ref().clone());
-                    } else {
-                        cur = e.parent.clone();
-                    }
+                    let tmp = e.borrow();
+                    match tmp.vars.borrow().get(sym) {
+                        Some(elem) => return Ok(elem.clone()),
+                        None => cur = tmp.parent.clone(),
+                    };
                 } else {
                     break;
                 }
@@ -405,10 +452,21 @@ fn eval(elem: &Elem, env: &mut Env) -> Result<Elem, String> {
 }
 
 fn main() {
-    let code = "(progn (println true) (println false) (println (123 456 789)) (if true (print \"Hello\") (print 123)) (print \"\n\"))";
+    let code = r#"(progn
+    (defun fib (n)
+        (if (eq n 0) 0
+            (if (eq n 1) 1
+                (add (fib (sub n 1)) (fib (sub n 2)))
+            )
+        )
+    )
+    (fib 30)
+    )"#;
 
+    let env = Rc::new(RefCell::new(Env::new()));
+    set_builtin_operator(&env);
     match minilisp_grammar::program(code) {
-        Ok(r) => match eval(&Elem::List(r), &mut Env::new()) {
+        Ok(r) => match eval(&Elem::List(r), &env) {
             Ok(elem) => println!("> {:?}", elem),
             Err(message) => {
                 println!("evaluation error: {}", message);
@@ -430,7 +488,7 @@ fn eval_arithmatic() {
     for (i, case) in testcase.iter().enumerate() {
         let code = case;
         let e = match minilisp_grammar::program(code) {
-            Ok(r) => match eval(&Elem::List(r), &mut Env::new()) {
+            Ok(r) => match eval(&Elem::List(r), &Rc::new(RefCell::new(Env::new()))) {
                 Ok(elem) => Some(elem),
                 Err(message) => {
                     println!("evaluation error: {}", message);
@@ -465,7 +523,7 @@ fn eval_logical() {
     for (i, case) in testcase.iter().enumerate() {
         let code = case;
         let e = match minilisp_grammar::program(code) {
-            Ok(r) => match eval(&Elem::List(r), &mut Env::new()) {
+            Ok(r) => match eval(&Elem::List(r), &Rc::new(RefCell::new(Env::new()))) {
                 Ok(elem) => Some(elem),
                 Err(message) => {
                     println!("evaluation error: {}", message);
