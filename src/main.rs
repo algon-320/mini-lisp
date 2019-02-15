@@ -1,4 +1,7 @@
 use std::cell::RefCell;
+use std::env;
+use std::fs::File;
+use std::io::prelude::*;
 use std::rc::Rc;
 
 mod operators;
@@ -11,31 +14,34 @@ mod minilisp_grammar {
     include!(concat!(env!("OUT_DIR"), "/minilisp_grammar.rs"));
 }
 
-fn main() {
-    let code = r#"(progn
-    (defun fib (n)
-        (if (eq n 0) 0
-            (if (eq n 1) 1
-                (add (fib (sub n 1)) (fib (sub n 2)))
-            )
-        )
-    )
-    (fib 20)
-    )"#;
+fn main() -> std::io::Result<()> {
+    let args: Vec<String> = env::args().collect();
+    if args.len() == 1 {
+        // repl
+        unimplemented!();
+    } else {
+        let code = if args[1] == "-c" && args.len() >= 3 {
+            // 2番目の引数を評価
+            args[2].clone()
+        } else {
+            // ファイルから読み込む
+            let mut tmp = String::new();
+            let mut file = File::open(&args[1])?;
+            file.read_to_string(&mut tmp)?;
+            tmp
+        };
 
-    let env = Rc::new(RefCell::new(Env::new()));
-    set_builtin_operator(&env);
-    match minilisp_grammar::program(code) {
-        Ok(r) => match eval(&Elem::List(r), &env) {
-            Ok(elem) => println!("> {:?}", elem),
-            Err(message) => {
-                println!("evaluation error: {}", message);
-            }
-        },
-        Err(e) => {
-            println!("parsing error: {}", e);
-        }
+        let env = Rc::new(RefCell::new(Env::new()));
+        set_builtin_operator(&env);
+        match minilisp_grammar::program(&code) {
+            Ok(r) => match eval(&Elem::List(r), &env) {
+                Ok(_) => {}
+                Err(message) => println!("evaluation error: {}", message),
+            },
+            Err(e) => println!("parsing error: {}", e),
+        };
     }
+    Ok(())
 }
 
 #[test]
