@@ -12,7 +12,7 @@ pub program -> Program
   = ignored* x:list ignored* { x }
 
 list -> List
-  = "(" vec:(elem)* ")" { List{ data: vec } }
+  = "(" ignored* vec:(elem)* ignored* ")" { List{ data: vec } }
 
 elem -> Elem
   = ignored* x:list ignored* { Elem::List(x) }

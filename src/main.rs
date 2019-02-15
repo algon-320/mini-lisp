@@ -1,7 +1,9 @@
 use std::cell::RefCell;
 use std::env;
 use std::fs::File;
+use std::io;
 use std::io::prelude::*;
+use std::io::stdout;
 use std::rc::Rc;
 
 mod operators;
@@ -14,11 +16,76 @@ mod minilisp_grammar {
     include!(concat!(env!("OUT_DIR"), "/minilisp_grammar.rs"));
 }
 
+fn repl() -> std::io::Result<()> {
+    println!("mini-lisp interpreter");
+    println!("Type :help to show repl commands.");
+
+    let stdin = io::stdin();
+
+    let env = Rc::new(RefCell::new(Env::new()));
+    set_builtin_operator(&env);
+
+    let mut line = String::new();
+    let mut line_count = 0;
+    let mut nest_count = 0;
+
+    loop {
+        if nest_count == 0 {
+            line.clear();
+            line_count += 1;
+            print!("[{:03}] >>> ", line_count);
+            stdout().flush()?;
+        } else {
+            print!("      ... ");
+            stdout().flush()?;
+        }
+        let mut tmp = String::new();
+        stdin.lock().read_line(&mut tmp)?;
+
+        for x in tmp.chars() {
+            match x {
+                '(' => nest_count += 1,
+                ')' => nest_count -= 1,
+                _ => {}
+            };
+        }
+
+        match tmp.as_str() {
+            ":help\n" => {
+                println!(":help  ---  show help");
+                println!(":exit  ---  exit");
+                continue;
+            }
+            ":exit\n" => {
+                break;
+            }
+            "\n" => {
+                continue;
+            }
+            _ => {}
+        };
+
+        line.push_str(&tmp);
+
+        if nest_count != 0 {
+            continue;
+        }
+
+        match minilisp_grammar::program(&line) {
+            Ok(r) => match eval(&Elem::List(r), &env) {
+                Ok(res) => println!("{:?}", res),
+                Err(message) => println!("evaluation error: {}", message),
+            },
+            Err(e) => println!("parsing error: {}", e),
+        };
+    }
+    Ok(())
+}
+
 fn main() -> std::io::Result<()> {
     let args: Vec<String> = env::args().collect();
     if args.len() == 1 {
-        // repl
-        unimplemented!();
+        repl()?;
     } else {
         let code = if args[1] == "-c" && args.len() >= 3 {
             // 2番目の引数を評価
