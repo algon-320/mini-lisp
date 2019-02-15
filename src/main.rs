@@ -134,7 +134,7 @@ mod minilisp_grammar {
 #[derive(Clone)]
 pub struct Env {
     parent: Weak<RefCell<Env>>,
-    vars: Rc<RefCell<HashMap<String, Elem>>>,
+    vars: HashMap<String, Elem>,
 }
 
 impl PartialEq for Env {
@@ -147,7 +147,7 @@ impl Env {
     fn new() -> Env {
         Env {
             parent: Weak::new(),
-            vars: Rc::new(RefCell::new(HashMap::new())),
+            vars: HashMap::new(),
         }
     }
 }
@@ -218,8 +218,8 @@ fn op_setq(args: &[Elem], env: &Rc<RefCell<Env>>) -> Result<Elem, String> {
     let e1 = &args[0];
     let e2 = eval(&args[1], env)?;
     let sym = e1.extract_symbol()?;
-    let env = (*env).borrow_mut();
-    env.vars.borrow_mut().insert(sym, e2.clone());
+    let mut env = env.borrow_mut();
+    env.vars.insert(sym, e2.clone());
     Ok(Elem::List(List::unit()))
 }
 
@@ -321,7 +321,7 @@ fn op_lambda(args: &[Elem], env: &Rc<RefCell<Env>>) -> Result<Elem, String> {
     }
     let closure = Env {
         parent: Rc::downgrade(&env),
-        vars: Rc::new(RefCell::new(HashMap::new())),
+        vars: HashMap::new(),
     };
     let lambda_arg = args[0].extract_list()?;
     let ops = args[1].extract_list()?;
@@ -337,8 +337,8 @@ fn op_defun(args: &[Elem], env: &Rc<RefCell<Env>>) -> Result<Elem, String> {
         _ => return Err(format!("defun: mismatch operand type.")),
     };
     let func = op_lambda(&args[1..], env)?;
-    let env = env.borrow_mut();
-    env.vars.borrow_mut().insert(sym.clone(), func.clone());
+    let mut env = env.borrow_mut();
+    env.vars.insert(sym.clone(), func.clone());
     Ok(Elem::List(List::unit()))
 }
 
@@ -347,10 +347,9 @@ fn set_builtin_operator(env: &Rc<RefCell<Env>>) {
         "defun", "lambda", "progn", "setq", "if", "eq", "neq", "not", "land", "lor", "add", "sub",
         "mul", "div", "bit_and", "bit_or", "bit_xor", "print", "println",
     ];
-    let env = env.borrow_mut();
+    let mut env = env.borrow_mut();
     for name in op_names.iter() {
         env.vars
-            .borrow_mut()
             .insert(name.to_string(), Elem::BuiltinFunc(name.to_string()));
     }
 }
@@ -400,9 +399,9 @@ fn eval(elem: &Elem, env: &Rc<RefCell<Env>>) -> Result<Elem, String> {
                         evalated.data.push(eval(&e, &env)?);
                     }
 
-                    let call_env = Env {
+                    let mut call_env = Env {
                         parent: Rc::downgrade(&def_env),
-                        vars: Rc::new(RefCell::new(HashMap::new())),
+                        vars: HashMap::new(),
                     };
 
                     // 引数を環境に登録
@@ -411,10 +410,7 @@ fn eval(elem: &Elem, env: &Rc<RefCell<Env>>) -> Result<Elem, String> {
                         for (i, e) in args.data.iter().enumerate() {
                             match e {
                                 Elem::Symbol(name) => {
-                                    call_env
-                                        .vars
-                                        .borrow_mut()
-                                        .insert(name.clone(), evalated.data[i].clone());
+                                    call_env.vars.insert(name.clone(), evalated.data[i].clone());
                                 }
                                 _ => return Err(format!("func: mismatch type of arguments")),
                             };
@@ -429,7 +425,7 @@ fn eval(elem: &Elem, env: &Rc<RefCell<Env>>) -> Result<Elem, String> {
         }
         Elem::Symbol(sym) => {
             let env = env.borrow();
-            if let Some(e) = env.vars.borrow().get(sym) {
+            if let Some(e) = env.vars.get(sym) {
                 return Ok(e.clone());
             }
             // 親スコープを探索
@@ -437,7 +433,7 @@ fn eval(elem: &Elem, env: &Rc<RefCell<Env>>) -> Result<Elem, String> {
             loop {
                 if let Some(e) = cur.upgrade() {
                     let tmp = e.borrow();
-                    match tmp.vars.borrow().get(sym) {
+                    match tmp.vars.get(sym) {
                         Some(elem) => return Ok(elem.clone()),
                         None => cur = tmp.parent.clone(),
                     };
@@ -485,10 +481,13 @@ fn eval_arithmatic() {
         r#"(div (add 1 2 3 4 5 6) (sub 6 4))"#,
     ];
     let expected = vec![Some(Elem::Int(6)), Some(Elem::Int(10))];
+
+    let env = Rc::new(RefCell::new(Env::new()));
+    set_builtin_operator(&env);
     for (i, case) in testcase.iter().enumerate() {
         let code = case;
         let e = match minilisp_grammar::program(code) {
-            Ok(r) => match eval(&Elem::List(r), &Rc::new(RefCell::new(Env::new()))) {
+            Ok(r) => match eval(&Elem::List(r), &env) {
                 Ok(elem) => Some(elem),
                 Err(message) => {
                     println!("evaluation error: {}", message);
@@ -520,10 +519,13 @@ fn eval_logical() {
         None,
         Some(Elem::Bool(false)),
     ];
+
+    let env = Rc::new(RefCell::new(Env::new()));
+    set_builtin_operator(&env);
     for (i, case) in testcase.iter().enumerate() {
         let code = case;
         let e = match minilisp_grammar::program(code) {
-            Ok(r) => match eval(&Elem::List(r), &Rc::new(RefCell::new(Env::new()))) {
+            Ok(r) => match eval(&Elem::List(r), &env) {
                 Ok(elem) => Some(elem),
                 Err(message) => {
                     println!("evaluation error: {}", message);
