@@ -57,7 +57,28 @@ pub fn op_div(args: &[Elem], env: &Rc<RefCell<Env>>) -> Result<Elem, String> {
         if i == 0 {
             ret = n;
         } else {
+            if n == 0 {
+                return Err(format!("div: divided by 0."));
+            }
             ret /= n;
+        }
+    }
+    Ok(Elem::Int(ret))
+}
+
+// args の最初の要素を2番目以降の要素で順に割った余り (IntでないElemがあるとエラー)
+pub fn op_mod(args: &[Elem], env: &Rc<RefCell<Env>>) -> Result<Elem, String> {
+    let mut ret = 0;
+    for (i, e) in args.iter().enumerate() {
+        let e = eval(e, env)?;
+        let n = e.extract_int()?;
+        if i == 0 {
+            ret = n;
+        } else {
+            if n == 0 {
+                return Err(format!("mov: divided by 0."));
+            }
+            ret %= n;
         }
     }
     Ok(Elem::Int(ret))
@@ -194,6 +215,64 @@ pub fn op_defun(args: &[Elem], env: &Rc<RefCell<Env>>) -> Result<Elem, String> {
     Ok(Elem::List(List::unit()))
 }
 
+pub fn op_land(args: &[Elem], env: &Rc<RefCell<Env>>) -> Result<Elem, String> {
+    let mut ret = true;
+    for e in args {
+        let e = eval(e, env)?;
+        let x = e.extract_bool()?;
+        ret &= x;
+    }
+    Ok(Elem::Bool(ret))
+}
+pub fn op_lor(args: &[Elem], env: &Rc<RefCell<Env>>) -> Result<Elem, String> {
+    let mut ret = false;
+    for e in args {
+        let e = eval(e, env)?;
+        let x = e.extract_bool()?;
+        ret |= x;
+    }
+    Ok(Elem::Bool(ret))
+}
+pub fn op_band(args: &[Elem], env: &Rc<RefCell<Env>>) -> Result<Elem, String> {
+    let mut ret = 0;
+    for (i, e) in args.iter().enumerate() {
+        let e = eval(e, env)?;
+        let x = e.extract_int()?;
+        if i == 0 {
+            ret = x;
+        } else {
+            ret &= x;
+        }
+    }
+    Ok(Elem::Int(ret))
+}
+pub fn op_bor(args: &[Elem], env: &Rc<RefCell<Env>>) -> Result<Elem, String> {
+    let mut ret = 0;
+    for (i, e) in args.iter().enumerate() {
+        let e = eval(e, env)?;
+        let x = e.extract_int()?;
+        if i == 0 {
+            ret = x;
+        } else {
+            ret |= x;
+        }
+    }
+    Ok(Elem::Int(ret))
+}
+pub fn op_bxor(args: &[Elem], env: &Rc<RefCell<Env>>) -> Result<Elem, String> {
+    let mut ret = 0;
+    for (i, e) in args.iter().enumerate() {
+        let e = eval(e, env)?;
+        let x = e.extract_int()?;
+        if i == 0 {
+            ret = x;
+        } else {
+            ret ^= x;
+        }
+    }
+    Ok(Elem::Int(ret))
+}
+
 pub fn set_builtin_operator(env: &Rc<RefCell<Env>>) {
     let op_names = [
         "defun", "lambda", "let", "progn", "setq", "if", "eq", "neq", "not", "land", "lor", "add",
@@ -221,16 +300,16 @@ pub fn call_builtin_operator(
         "eq" => op_eq(args, env),
         "neq" => op_neq(args, env),
         "not" => op_not(args, env),
-        "land" => unimplemented!(),
-        "lor" => unimplemented!(),
+        "land" => op_land(args, env),
+        "lor" => op_lor(args, env),
         "add" => op_add(args, env),
         "sub" => op_sub(args, env),
         "mul" => op_mul(args, env),
         "div" => op_div(args, env),
-        "mod" => unimplemented!(),
-        "band" => unimplemented!(),
-        "bor" => unimplemented!(),
-        "bxor" => unimplemented!(),
+        "mod" => op_mod(args, env),
+        "band" => op_band(args, env),
+        "bor" => op_bor(args, env),
+        "bxor" => op_bxor(args, env),
         "print" => op_print(args, env),
         "println" => op_println(args, env),
         _ => Err(format!("call_builtin_operator: undefined")),
